@@ -7,6 +7,34 @@ use core::slice;
 
 use self::memfd_secret_alloc::*;
 
+static MEMFD_ALLOC_INIT: Once = Once::new();
+
+// -- alloc init --
+
+#[inline]
+unsafe fn memfd_alloc_init() {
+    let mut rlimit_struct: libc::rlimit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    let r = libc::getrlimit(libc::RLIMIT_MEMLOCK, &mut rlimit_struct as *mut libc::rlimit);
+
+    if r < 0 {
+        //Print erno
+        let err = std::io::Error::last_os_error();
+        log::debug!("getrlimit errno: {:?}", err);
+    }
+
+    log::debug!("rlimit_struct: cur: {}, max: {}", rlimit_struct.rlim_cur, rlimit_struct.rlim_max);
+
+    rlimit_struct.rlim_cur = rlimit_struct.rlim_max;
+
+    let r = libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlimit_struct as *const libc::rlimit);
+
+    if r < 0 {
+        //Print erno
+        let err = std::io::Error::last_os_error();
+        log::debug!("setrlimit errno: {:?}", err);
+    }
+}
+
 mod memfd_secret_alloc {
     use super::*;
     use core::convert::TryInto;
@@ -88,6 +116,7 @@ mod memfd_secret_alloc {
 unsafe fn _memfd_secret(size: usize) -> Option<*mut u8> {
     log::debug!("Getting page size");
     ALLOC_INIT.call_once(|| alloc_init());
+    MEMFD_ALLOC_INIT.call_once(|| memfd_alloc_init());
 
     log::debug!("Assert");
     //Assert size of unprotected_size (usize) and fd (i32) is less than PAGE_SIZE before allocating memory
