@@ -19,7 +19,7 @@ mod memfd_secret_alloc {
         log::debug!("syscall fd: {:?}", fd);
 
         if fd.is_err() {
-           log::debug!("Fd is err: {:?}", fd);
+            log::debug!("Fd is err: {:?}", fd);
         }
 
         if fd.unwrap() < 0 {
@@ -29,7 +29,7 @@ mod memfd_secret_alloc {
 
         let fd = fd.ok().filter(|&fd| fd >= 0)?;
 
-        log::debug!("set filesize" );
+        log::debug!("set filesize");
         // File size is set using ftruncate
         let r = libc::ftruncate(fd, size as libc::off_t);
         log::debug!("ftruncate: {:?}", r);
@@ -50,6 +50,34 @@ mod memfd_secret_alloc {
             //Print errno
             let error = std::io::Error::last_os_error();
             log::debug!("errno: {:?}, raw: {}", error, error.raw_os_error().unwrap());
+
+            if error.raw_os_error().unwrap() == libc::EAGAIN {
+                for i in 0..3 {
+                    log::debug!("ptr mmap retry: {}", i);
+
+                    let ptr = libc::mmap(
+                        ptr::null_mut(),
+                        size,
+                        Prot::ReadWrite,
+                        libc::MAP_SHARED,
+                        fd,
+                        0,
+                    );
+
+                    log::debug!("ptr mmap: {:?}", ptr);
+                    if ptr != libc::MAP_FAILED {
+                        return NonNull::new(ptr as *mut u8).map(|ptr| (ptr, fd));
+                    } else {
+                        //Print errno
+                        let error = std::io::Error::last_os_error();
+                        log::debug!("errno: {:?}, raw: {}", error, error.raw_os_error().unwrap());
+
+                        if error.raw_os_error().unwrap() != libc::EAGAIN {
+                            break;
+                        }
+                    }
+                }
+            }
             return None;
         }
 
@@ -78,12 +106,10 @@ unsafe fn _memfd_secret(size: usize) -> Option<*mut u8> {
     log::debug!("attempt alloc memfd_secret {} bytes", total_size);
     let (base_ptr, fd) = alloc_memfd_secret(total_size)?;
 
-
     log::debug!("set pointers");
     let base_ptr = base_ptr.as_ptr();
     let fd_ptr = base_ptr.add(size_of::<usize>());
     let unprotected_ptr = base_ptr.add(PAGE_SIZE * 2);
-
 
     log::debug!("mprotect");
     // mprotect can be used to change protection flag after mmap setup
