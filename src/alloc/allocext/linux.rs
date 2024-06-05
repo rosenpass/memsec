@@ -15,6 +15,15 @@ mod memfd_secret_alloc {
     pub unsafe fn alloc_memfd_secret(size: usize) -> Option<(NonNull<u8>, libc::c_int)> {
         let fd: Result<libc::c_int, _> = libc::syscall(libc::SYS_memfd_secret, 0).try_into();
 
+        if fd.is_err() {
+           log::debug!("Fd is err: {:?}", fd);
+        }
+
+        if fd.unwrap() < 0 {
+            //Print errno
+            log::debug!("errno: {:?}", std::io::Error::last_os_error());
+        }
+
         let fd = fd.ok().filter(|&fd| fd >= 0)?;
 
         // File size is set using ftruncate
