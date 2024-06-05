@@ -48,7 +48,8 @@ mod memfd_secret_alloc {
         if ptr == libc::MAP_FAILED {
             log::debug!("ptr mmap failed");
             //Print errno
-            log::debug!("errno: {:?}", std::io::Error::last_os_error());
+            let error = std::io::Error::last_os_error();
+            log::debug!("errno: {:?}, raw: {}", error, error.raw_os_error().unwrap());
             return None;
         }
 
