@@ -13,6 +13,7 @@ mod memfd_secret_alloc {
 
     #[inline]
     pub unsafe fn alloc_memfd_secret(size: usize) -> Option<(NonNull<u8>, libc::c_int)> {
+        log::debug!("alloc_memfd_secret: size: {}", size);
         let fd: Result<libc::c_int, _> = libc::syscall(libc::SYS_memfd_secret, 0).try_into();
 
         if fd.is_err() {
@@ -47,8 +48,10 @@ mod memfd_secret_alloc {
 }
 
 unsafe fn _memfd_secret(size: usize) -> Option<*mut u8> {
+    log::debug!("Getting page size");
     ALLOC_INIT.call_once(|| alloc_init());
 
+    log::debug!("Assert");
     //Assert size of unprotected_size (usize) and fd (i32) is less than PAGE_SIZE before allocating memory
     assert!(size_of::<usize>() + size_of::<i32>() <= PAGE_SIZE);
 
@@ -56,15 +59,23 @@ unsafe fn _memfd_secret(size: usize) -> Option<*mut u8> {
         return None;
     }
 
+    log::debug!("calculate sizes");
     // aligned alloc ptr
     let size_with_canary = CANARY_SIZE + size;
     let unprotected_size = page_round(size_with_canary);
     let total_size = PAGE_SIZE + PAGE_SIZE + unprotected_size + PAGE_SIZE;
+
+    log::debug!("attempt alloc memfd_secret {} bytes", total_size);
     let (base_ptr, fd) = alloc_memfd_secret(total_size)?;
+
+
+    log::debug!("set pointers");
     let base_ptr = base_ptr.as_ptr();
     let fd_ptr = base_ptr.add(size_of::<usize>());
     let unprotected_ptr = base_ptr.add(PAGE_SIZE * 2);
 
+
+    log::debug!("mprotect");
     // mprotect can be used to change protection flag after mmap setup
     // https://www.gnu.org/software/libc/manual/html_node/Memory-Protection.html#index-mprotect
     _mprotect(base_ptr.add(PAGE_SIZE), PAGE_SIZE, Prot::NoAccess);
@@ -83,6 +94,7 @@ unsafe fn _memfd_secret(size: usize) -> Option<*mut u8> {
 
     assert_eq!(unprotected_ptr_from_user_ptr(user_ptr), unprotected_ptr);
 
+    log::debug!("return");
     Some(user_ptr)
 }
 
