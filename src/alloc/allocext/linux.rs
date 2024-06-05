@@ -16,6 +16,8 @@ mod memfd_secret_alloc {
         log::debug!("alloc_memfd_secret: size: {}", size);
         let fd: Result<libc::c_int, _> = libc::syscall(libc::SYS_memfd_secret, 0).try_into();
 
+        log::debug!("syscall fd: {:?}", fd);
+
         if fd.is_err() {
            log::debug!("Fd is err: {:?}", fd);
         }
@@ -27,9 +29,12 @@ mod memfd_secret_alloc {
 
         let fd = fd.ok().filter(|&fd| fd >= 0)?;
 
+        log::debug!("set filesize" );
         // File size is set using ftruncate
-        let _ = libc::ftruncate(fd, size as libc::off_t);
+        let r = libc::ftruncate(fd, size as libc::off_t);
+        log::debug!("ftruncate: {:?}", r);
 
+        log::debug!("ptr mmap");
         let ptr = libc::mmap(
             ptr::null_mut(),
             size,
@@ -39,7 +44,9 @@ mod memfd_secret_alloc {
             0,
         );
 
+        log::debug!("ptr mmap: {:?}", ptr);
         if ptr == libc::MAP_FAILED {
+            log::debug!("ptr mmap failed");
             return None;
         }
 
